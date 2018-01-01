@@ -1,0 +1,24 @@
+[package]
+authors = ["Alexander Thaller <alexander.thaller@trivago.com>"]
+name = "syncust"
+version = "0.1.0"
+license = "MIT"
+readme = "README.md"
+description = """
+Sync tool written in rust that can keep different folders in sync but also
+supports a partial view on the data. So you can have an archive server tha keeps
+all the data and a checkout on your local laptop that only has some of the
+files. Its inspired by `syncthing` and `git annex`.
+"""
+documentation = "https://github.com/AlexanderThaller/syncust"
+homepage = "https://github.com/AlexanderThaller/syncust"
+repository = "https://github.com/AlexanderThaller/syncust"
+
+[dependencies]
+failure = "0.1"
+log = "0.4"
+simplelog = "0.4"
+
+[dependencies.clap]
+features = ["yaml"]
+version = "2.29"

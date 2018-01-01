@@ -1,0 +1,49 @@
+name: 'syncust'
+
+settings:
+  - 'SubcommandRequiredElseHelp'
+
+global_settings:
+  - 'ColoredHelp'
+  - 'GlobalVersion'
+  - 'NextLineHelp'
+  - 'VersionlessSubcommands'
+
+args:
+    - log_level:
+        default_value: 'info'
+        global: true
+        help: 'Loglevel to run under'
+        long: 'log_level'
+        possible_values: [ 'trace', 'debug', 'info', 'warn', 'error' ]
+        short: 'L'
+        takes_value: true
+        value_name: 'level'
+        env: 'SYNCUST_LOG_LEVEL'
+
+    - repo_path:
+        default_value: '.'
+        global: true
+        help: 'Path to the repository that should be managed'
+        long: 'repo_path'
+        short: 'R'
+        takes_value: true
+        value_name: 'path'
+
+subcommands:
+  - init:
+      about: "Initialize a new syncfolder and add all existing files to the repository"
+  - clone:
+      about: "Clone a remote repository"
+  - type:
+      about: "Change the type of the local repository can be `auto` or `manual`"
+  - get:
+      about: "Get data from a remote server"
+  - watch:
+      about: "Watch local and remote repositories and sync changes"
+  - drop:
+      about: "Remove local data from the repository"
+  - remote:
+      about: "Add a remote repository to keep in sync with"
+  - sync:
+      about: "Add/Remove all files that are not yet tracked by syncust"
