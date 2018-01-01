@@ -47,3 +47,5 @@ subcommands:
       about: "Add a remote repository to keep in sync with"
   - sync:
       about: "Add/Remove all files that are not yet tracked by syncust"
+  - add_remote:
+      about: "Add an additional remote that should be kept in sync."

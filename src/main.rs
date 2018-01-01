@@ -1,18 +1,40 @@
 #[macro_use]
-extern crate log;
-extern crate simplelog;
-
+extern crate clap;
 #[macro_use]
 extern crate failure;
-
 #[macro_use]
-extern crate clap;
+extern crate log;
+extern crate loggerv;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
+extern crate sha2;
+extern crate walkdir;
 
-use failure::Error;
+mod repository;
+mod repofile;
+mod chunker;
+
+use failure::{
+    Error,
+    ResultExt,
+};
+use repository::Repository;
+
+#[derive(Debug, Fail)]
+enum CliError {
+    #[fail(display = "can not get repo_path from matches")] CanNotGetRepoPathFromMatches,
+}
 
 fn main() {
     if let Err(e) = run() {
-        error!("error while running: {}", e);
+        for cause in e.causes() {
+            error!("{}", cause);
+        }
+
+        trace!("{}", e.backtrace());
+
         ::std::process::exit(1);
     }
 }
@@ -26,13 +48,11 @@ fn run() -> Result<(), Error> {
         .author(crate_authors!())
         .get_matches();
 
-    let _ = simplelog::TermLogger::init(
-        value_t!(matches, "log_level", simplelog::LogLevelFilter)?,
-        simplelog::Config::default(),
-    );
+    loggerv::init_with_level(value_t!(matches, "log_level", log::LogLevel)?)?;
     trace!("matches: {:#?}", matches);
 
     match matches.subcommand_name() {
+        Some("add_remote") => run_add_remote(matches.subcommand_matches("add_remote").unwrap())?,
         Some("clone") => run_clone(matches.subcommand_matches("clone").unwrap())?,
         Some("drop") => run_drop(matches.subcommand_matches("drop").unwrap())?,
         Some("get") => run_get(matches.subcommand_matches("get").unwrap())?,
@@ -47,34 +67,53 @@ fn run() -> Result<(), Error> {
     Ok(())
 }
 
-fn run_clone(matches: &clap::ArgMatches) -> Result<(), Error> {
+fn run_add_remote(_matches: &clap::ArgMatches) -> Result<(), Error> {
     unimplemented!()
 }
 
-fn run_drop(matches: &clap::ArgMatches) -> Result<(), Error> {
+fn run_clone(_matches: &clap::ArgMatches) -> Result<(), Error> {
     unimplemented!()
 }
 
-fn run_get(matches: &clap::ArgMatches) -> Result<(), Error> {
+fn run_drop(_matches: &clap::ArgMatches) -> Result<(), Error> {
+    unimplemented!()
+}
+
+fn run_get(_matches: &clap::ArgMatches) -> Result<(), Error> {
     unimplemented!()
 }
 
 fn run_init(matches: &clap::ArgMatches) -> Result<(), Error> {
+    use std::path::PathBuf;
+
+    let repo_path: PathBuf = matches
+        .value_of("repo_path")
+        .ok_or(CliError::CanNotGetRepoPathFromMatches)?
+        .into();
+
+    info!("Initializing repository in {}", repo_path.display());
+
+    let mut repo = Repository::default().with_path(repo_path);
+
+    repo.init().context("can not initialize repository")?;
+
+    trace!("main::run_init:repo - {:#?}", repo);
+
+    Ok(())
+}
+
+fn run_remote(_matches: &clap::ArgMatches) -> Result<(), Error> {
     unimplemented!()
 }
 
-fn run_remote(matches: &clap::ArgMatches) -> Result<(), Error> {
+fn run_sync(_matches: &clap::ArgMatches) -> Result<(), Error> {
     unimplemented!()
 }
 
-fn run_sync(matches: &clap::ArgMatches) -> Result<(), Error> {
+fn run_type(_matches: &clap::ArgMatches) -> Result<(), Error> {
     unimplemented!()
 }
 
-fn run_type(matches: &clap::ArgMatches) -> Result<(), Error> {
-    unimplemented!()
-}
-
-fn run_watch(matches: &clap::ArgMatches) -> Result<(), Error> {
+fn run_watch(_matches: &clap::ArgMatches) -> Result<(), Error> {
     unimplemented!()
 }
