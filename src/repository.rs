@@ -50,6 +50,8 @@ impl Repository {
             Err(RepositoryError::AlreadyInitialized)?
         }
 
+        // TODO: Make this more efficient so it wont blow up ram when there are a lot
+        // of files maybe make a channel queue or something
         {
             let paths: Vec<_> = WalkDir::new(&self.path)
                 .into_iter()
@@ -69,8 +71,6 @@ impl Repository {
                 self.files.insert(entry.1.to_path_buf(), file);
             }
         }
-
-        return Ok(());
 
         create_dir_all(self.get_data_path()).context("can not create data dir")?;
 
