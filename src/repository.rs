@@ -80,7 +80,7 @@ impl Repository {
 
     fn move_file_to_object_store<P: AsRef<Path> + Debug>(&self, path: P, file: &RepoFile) -> Result<(), Error> {
         let mut objects_path = self.get_objects_path();
-        if file.is_dir {
+        if file.is_dir || file.is_symlink {
             return Ok(());
         }
 
@@ -91,7 +91,7 @@ impl Repository {
 
         let mut chunker = Chunker::new(hash.as_str(), 2);
 
-        for _sublayers in { 0..self.sublayers } {
+        for _sublayer in { 0..self.sublayers } {
             objects_path = objects_path.join(chunker.next().ok_or(format_err!(
                 "chunker for path {:?} has no avaible chunks",
                 path

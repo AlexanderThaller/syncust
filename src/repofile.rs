@@ -7,14 +7,21 @@ use sha2::{
     Sha256,
 };
 use std::fmt::Debug;
-use std::fs::File;
+use std::fs::{
+    symlink_metadata,
+    File,
+};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::time::SystemTime;
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RepoFile {
     pub hash: Option<String>,
     pub is_dir: bool,
+    pub is_symlink: bool,
+    pub len: u64,
+    pub modified: SystemTime,
     pub permissions: u32,
 }
 
@@ -25,8 +32,9 @@ impl RepoFile {
         let mut file = File::open(&path).context(format_err!("can not open path {:?}", path))?;
         trace!("repofile::from_path: file - {:?}", file);
 
-        let metadata = file.metadata()
-            .context(format_err!("can not get is_dir for file {:?}", path))?;
+        // NOTE: We dont want to follow symlinks as we want to replicate the symlinks
+        // in other repositories.
+        let metadata = symlink_metadata(&path).context(format_err!("can not get metadata for file {:?}", path))?;
 
         trace!("repofile::from_path: metadata - {:?}", metadata);
 
@@ -39,9 +47,14 @@ impl RepoFile {
         };
 
         Ok(RepoFile {
-            is_dir: is_dir,
-            permissions: metadata.permissions().mode(),
             hash: hash,
+            is_dir: is_dir,
+            is_symlink: metadata.file_type().is_symlink(),
+            len: metadata.len(),
+            modified: metadata
+                .modified()
+                .context(format_err!("can not get modified time for file {:?}", path))?,
+            permissions: metadata.permissions().mode(),
         })
     }
 }
