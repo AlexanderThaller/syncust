@@ -5,6 +5,7 @@ extern crate failure;
 #[macro_use]
 extern crate log;
 extern crate loggerv;
+extern crate rayon;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
