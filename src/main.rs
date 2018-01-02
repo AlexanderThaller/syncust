@@ -49,7 +49,7 @@ fn run() -> Result<(), Error> {
         .get_matches();
 
     loggerv::init_with_level(value_t!(matches, "log_level", log::LogLevel)?)?;
-    trace!("matches: {:#?}", matches);
+    trace!("main::run: matches - {:#?}", matches);
 
     match matches.subcommand_name() {
         Some("add_remote") => run_add_remote(matches.subcommand_matches("add_remote").unwrap())?,
@@ -97,7 +97,7 @@ fn run_init(matches: &clap::ArgMatches) -> Result<(), Error> {
 
     repo.init().context("can not initialize repository")?;
 
-    trace!("main::run_init:repo - {:#?}", repo);
+    trace!("main::run_init: repo - {:#?}", repo);
 
     Ok(())
 }
