@@ -5,6 +5,7 @@ extern crate failure;
 #[macro_use]
 extern crate log;
 extern crate loggerv;
+extern crate pathdiff;
 extern crate rayon;
 extern crate serde;
 #[macro_use]
@@ -15,6 +16,7 @@ extern crate walkdir;
 
 mod repository;
 mod repofile;
+mod pathclassifier;
 mod chunker;
 
 use failure::{
@@ -22,6 +24,7 @@ use failure::{
     ResultExt,
 };
 use repository::Repository;
+use std::path::PathBuf;
 
 #[derive(Debug, Fail)]
 enum CliError {
@@ -72,8 +75,48 @@ fn run_add_remote(_matches: &clap::ArgMatches) -> Result<(), Error> {
     unimplemented!()
 }
 
-fn run_clone(_matches: &clap::ArgMatches) -> Result<(), Error> {
-    unimplemented!()
+fn run_clone(matches: &clap::ArgMatches) -> Result<(), Error> {
+    let source_path: PathBuf = matches
+        .value_of("source_path")
+        .ok_or_else(|| format_err!("can not get source_path from matches"))?
+        .into();
+
+    let destination_path: PathBuf = if matches.is_present("destination_path") {
+        matches
+            .value_of("destination_path")
+            .ok_or_else(|| format_err!("can not get destination_path from matches"))?
+            .into()
+    } else {
+        let source_path = source_path.clone();
+        let mut components = source_path.components().collect::<Vec<_>>();
+        trace!("main::run_clone: components - {:?}", components);
+
+        components.reverse();
+
+        let basename = components
+            .get(0)
+            .ok_or_else(|| format_err!("can not get basename from source_path"))?
+            .as_os_str()
+            .into();
+
+        trace!("main::run_clone: basename - {:?}", basename);
+
+        basename
+    };
+
+    info!(
+        "Cloning from {} to {}",
+        source_path.display(),
+        destination_path.display()
+    );
+
+    let mut repo = Repository::default().with_path(destination_path);
+
+    repo.clone(source_path).context("can not clone repository")?;
+
+    trace!("main::run_init: repo - {:#?}", repo);
+
+    Ok(())
 }
 
 fn run_drop(_matches: &clap::ArgMatches) -> Result<(), Error> {
@@ -85,8 +128,6 @@ fn run_get(_matches: &clap::ArgMatches) -> Result<(), Error> {
 }
 
 fn run_init(matches: &clap::ArgMatches) -> Result<(), Error> {
-    use std::path::PathBuf;
-
     let repo_path: PathBuf = matches
         .value_of("repo_path")
         .ok_or(CliError::CanNotGetRepoPathFromMatches)?
