@@ -222,7 +222,7 @@ impl Repository {
         );
 
         let relative_path =
-            diff_paths(&objects_path, &path.as_ref()).ok_or_else(|| format_err!("can not get relative path for file path {:?}", path))?;
+            diff_paths(&objects_path, path.as_ref()).ok_or_else(|| format_err!("can not get relative path for file path {:?}", path))?;
 
         debug!(
             "repository::Repository::populate_file: relative_path - {:?}",

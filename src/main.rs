@@ -20,6 +20,7 @@ mod pathclassifier;
 mod chunker;
 
 use failure::{
+    Context,
     Error,
     ResultExt,
 };
@@ -78,13 +79,13 @@ fn run_add_remote(_matches: &clap::ArgMatches) -> Result<(), Error> {
 fn run_clone(matches: &clap::ArgMatches) -> Result<(), Error> {
     let source_path: PathBuf = matches
         .value_of("source_path")
-        .ok_or_else(|| format_err!("can not get source_path from matches"))?
+        .ok_or_else(|| Context::new("can not get source_path from matches"))?
         .into();
 
     let destination_path: PathBuf = if matches.is_present("destination_path") {
         matches
             .value_of("destination_path")
-            .ok_or_else(|| format_err!("can not get destination_path from matches"))?
+            .ok_or_else(|| Context::new("can not get destination_path from matches"))?
             .into()
     } else {
         let source_path = source_path.clone();
@@ -95,7 +96,7 @@ fn run_clone(matches: &clap::ArgMatches) -> Result<(), Error> {
 
         let basename = components
             .get(0)
-            .ok_or_else(|| format_err!("can not get basename from source_path"))?
+            .ok_or_else(|| Context::new("can not get basename from source_path"))?
             .as_os_str()
             .into();
 
