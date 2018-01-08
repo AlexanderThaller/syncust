@@ -23,7 +23,7 @@ args:
 
 subcommands:
   - init:
-      about: "Initialize a new syncfolder and add all existing files to the repository"
+      about: 'Initialize a new syncfolder and add all existing files to the repository'
       args:
         - repo_path:
             default_value: '.'
@@ -35,37 +35,56 @@ subcommands:
             value_name: 'path'
 
   - clone:
-      about: "Clone a remote repository"
+      about: 'Clone a remote repository'
       args:
         - source_path:
-            help: "source to clone from"
+            help: 'Source to clone from'
             index: 1
             takes_value: true
             required: true
-            value_name: "source_path"
+            value_name: 'source_path'
         - destination_path:
-            help: "where to clone to. by default this will clone into ./{basedir source}"
+            help: 'Where to clone to. by default this will clone into ./{basedir source}'
             index: 2
             takes_value: true
-            value_name: "destination_path"
+            value_name: 'destination_path'
+
+  - add:
+      about: 'Add files that should be managed by syncust'
+      args:
+        - repo_path:
+            default_value: '.'
+            global: true
+            help: 'Path to the repository that should be managed'
+            long: 'repo_path'
+            short: 'R'
+            takes_value: true
+            value_name: 'path'
+        - paths_to_add:
+            help: 'Paths to that should be managed by syncust'
+            takes_value: true
+            required: true
+            multiple: true
+            use_delimiter: false
+            value_name: 'paths'
 
   - type:
-      about: "Change the type of the local repository can be `auto` or `manual`"
+      about: 'Change the type of the local repository can be `auto` or `manual`'
 
   - get:
-      about: "Get data from a remote server"
+      about: 'Get data from a remote server'
 
   - watch:
-      about: "Watch local and remote repositories and sync changes"
+      about: 'Watch local and remote repositories and sync changes'
 
   - drop:
-      about: "Remove local data from the repository"
+      about: 'Remove local data from the repository'
 
   - remote:
-      about: "Add a remote repository to keep in sync with"
+      about: 'Add a remote repository to keep in sync with'
 
   - sync:
-      about: "Add/Remove all files that are not yet tracked by syncust"
+      about: 'Add/Remove all files that are not yet tracked by syncust'
 
   - add_remote:
-      about: "Add an additional remote that should be kept in sync."
+      about: 'Add an additional remote that should be kept in sync'

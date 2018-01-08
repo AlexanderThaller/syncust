@@ -6,7 +6,6 @@ use failure::{
 use pathclassifier;
 use pathclassifier::PathType;
 use pathdiff::diff_paths;
-use rayon::prelude::*;
 use repofile::RepoFile;
 use serde_json::{
     from_reader,
@@ -29,6 +28,7 @@ type Files = BTreeMap<PathBuf, RepoFile>;
 #[derive(Debug, Fail)]
 enum RepositoryError {
     #[fail(display = "repository is already initialized")] AlreadyInitialized,
+    #[fail(display = "repository is not initialized")] NotInitialized,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -57,53 +57,11 @@ impl Repository {
     }
 
     pub fn init(&mut self) -> Result<(), Error> {
-        if self.get_data_path().exists() {
+        if self.is_inialized() {
             Err(RepositoryError::AlreadyInitialized)?
         }
 
-        // TODO: Make this more efficient so it wont blow up ram when there are a lot
-        // of files maybe make a channel queue or something
-        {
-            let paths: Vec<_> = WalkDir::new(&self.path)
-                .into_iter()
-                .map(|entry| entry.unwrap())
-                .map(|entry| entry.path().to_path_buf())
-                .collect();
-
-            info!("Collected {} paths", paths.len());
-
-            let entries: Vec<_> = paths
-                .par_iter()
-                .filter(|path| path != &&self.path)
-                .map(|path| {
-                    (
-                        RepoFile::from_path(&path),
-                        path.strip_prefix(&self.path)
-                            .expect("path of entry does not have repo as prefix. this should never happen")
-                            .to_path_buf(),
-                    )
-                })
-                .collect();
-
-            info!("Finished processing paths");
-
-            for entry in entries {
-                trace!("repository::Repository::init: entry - {:?}", entry);
-                let file = entry.0?;
-
-                self.files.insert(entry.1.to_path_buf(), file);
-            }
-        }
-
         create_dir_all(self.get_data_path()).context("can not create data dir")?;
-
-        info!("Moving files");
-
-        for (path, file) in &self.files {
-            self.move_file_to_object_store(path, file)?;
-        }
-
-        info!("Writing repo data");
 
         self.write_repodata().context("can not write repo data")?;
 
@@ -121,6 +79,53 @@ impl Repository {
         match pathclassifier::from_path(&source_path).context("can not classify source path")? {
             PathType::Local => self.clone_local(source_path)?,
         }
+
+        Ok(())
+    }
+
+    pub fn add<P: AsRef<Path> + Debug>(&mut self, paths_to_add: Vec<P>) -> Result<(), Error> {
+        if !self.is_inialized() {
+            Err(RepositoryError::NotInitialized)?
+        }
+
+        for path in paths_to_add {
+            trace!("repository::Repository::add: path - {:?}", path);
+
+            self.add_folder(path);
+        }
+
+        Ok(())
+    }
+
+    fn add_folder<P: AsRef<Path> + Debug>(&mut self, folder_path: P) {
+        let repo_path = self.path.clone();
+
+        // TODO: Make this more efficient so it wont blow up ram when there are a lot
+        // of files maybe make a channel queue or something
+        // TODO: Parallelize
+        let _no_out: Vec<_> = WalkDir::new(folder_path)
+            .into_iter()
+            .map(|entry| entry.unwrap())
+            .map(|entry| entry.path().to_path_buf())
+            .filter(|path| path != &repo_path)
+            .map(|path| self.add_file(path))
+            .filter(|result| result.is_err())
+            .map(|error| error!("{:?}", error))
+            .collect();
+    }
+
+    fn add_file<P: AsRef<Path> + Debug>(&mut self, file_path: P) -> Result<(), Error> {
+        let file = RepoFile::from_path(&file_path).context(format_err!("can not create file from path {:?}", file_path))?;
+
+        let path = file_path
+            .as_ref()
+            .strip_prefix(&self.path)
+            .expect("path of entry does not have repo as prefix. this should never happen")
+            .to_path_buf();
+
+        self.move_file_to_object_store(&path, &file)?;
+        self.files.insert(path, file);
+        self.write_repodata().context("can not write repo data")?;
 
         Ok(())
     }
@@ -327,5 +332,9 @@ impl Repository {
 
     fn get_full_path<P: AsRef<Path> + Debug>(&self, path: P) -> PathBuf {
         self.path.join(path)
+    }
+
+    fn is_inialized(&self) -> bool {
+        self.get_data_path().exists()
     }
 }

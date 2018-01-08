@@ -6,7 +6,6 @@ extern crate failure;
 extern crate log;
 extern crate loggerv;
 extern crate pathdiff;
-extern crate rayon;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -58,6 +57,7 @@ fn run() -> Result<(), Error> {
 
     match matches.subcommand_name() {
         Some("add_remote") => run_add_remote(matches.subcommand_matches("add_remote").unwrap())?,
+        Some("add") => run_add(matches.subcommand_matches("add").unwrap())?,
         Some("clone") => run_clone(matches.subcommand_matches("clone").unwrap())?,
         Some("drop") => run_drop(matches.subcommand_matches("drop").unwrap())?,
         Some("get") => run_get(matches.subcommand_matches("get").unwrap())?,
@@ -76,6 +76,25 @@ fn run_add_remote(_matches: &clap::ArgMatches) -> Result<(), Error> {
     unimplemented!()
 }
 
+fn run_add(matches: &clap::ArgMatches) -> Result<(), Error> {
+    let repo_path: PathBuf = matches
+        .value_of("repo_path")
+        .ok_or(CliError::CanNotGetRepoPathFromMatches)?
+        .into();
+
+    let paths_to_add = values_t!(matches.values_of("paths_to_add"), String).context("can not get paths to add from matches")?;
+
+    let mut repo = Repository::default().with_path(repo_path);
+
+    repo.add(paths_to_add)
+        .context("can not add files to repository")?;
+
+    trace!("main::run_add: repo - {:#?}", repo);
+
+    Ok(())
+}
+
+// TODO: Add origin to remotes for the repo.
 fn run_clone(matches: &clap::ArgMatches) -> Result<(), Error> {
     let source_path: PathBuf = matches
         .value_of("source_path")
