@@ -70,6 +70,8 @@ impl Repository {
                 .map(|entry| entry.path().to_path_buf())
                 .collect();
 
+            info!("Collected {} paths", paths.len());
+
             let entries: Vec<_> = paths
                 .par_iter()
                 .filter(|path| path != &&self.path)
@@ -83,6 +85,8 @@ impl Repository {
                 })
                 .collect();
 
+            info!("Finished processing paths");
+
             for entry in entries {
                 trace!("repository::Repository::init: entry - {:?}", entry);
                 let file = entry.0?;
@@ -93,9 +97,13 @@ impl Repository {
 
         create_dir_all(self.get_data_path()).context("can not create data dir")?;
 
+        info!("Moving files");
+
         for (path, file) in &self.files {
             self.move_file_to_object_store(path, file)?;
         }
+
+        info!("Writing repo data");
 
         self.write_repodata().context("can not write repo data")?;
 
