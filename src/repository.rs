@@ -150,8 +150,8 @@ impl Repository {
         let data_path = self.get_data_path();
 
         // TODO: Make this more efficient so it wont blow up ram when there are a lot
-        // of files maybe make a channel queue or something
-        // TODO: Parallelize
+        // of files maybe make a channel queue or something. Maybe use
+        // https://github.com/crossbeam-rs/crossbeam-channel and https://doc.rust-lang.org/std/sync/struct.Barrier.html
         let _no_out: Vec<_> = WalkDir::new(folder_path)
             .into_iter()
             .map(|entry| entry.unwrap())
