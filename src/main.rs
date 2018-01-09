@@ -1,3 +1,4 @@
+extern crate bincode;
 #[macro_use]
 extern crate clap;
 #[macro_use]
@@ -11,6 +12,7 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 extern crate sha2;
+extern crate sled;
 extern crate walkdir;
 
 mod repository;
@@ -84,7 +86,7 @@ fn run_add(matches: &clap::ArgMatches) -> Result<(), Error> {
 
     let paths_to_add = values_t!(matches.values_of("paths_to_add"), String).context("can not get paths to add from matches")?;
 
-    let mut repo = Repository::default().with_path(repo_path);
+    let mut repo = Repository::open(repo_path).context("can not open repository")?;
 
     repo.add(paths_to_add)
         .context("can not add files to repository")?;
@@ -155,8 +157,7 @@ fn run_init(matches: &clap::ArgMatches) -> Result<(), Error> {
 
     info!("Initializing repository in {}", repo_path.display());
 
-    let mut repo = Repository::default().with_path(repo_path);
-
+    let repo = Repository::default().with_path(repo_path);
     repo.init().context("can not initialize repository")?;
 
     trace!("main::run_init: repo - {:#?}", repo);

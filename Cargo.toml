@@ -33,3 +33,7 @@ version = "2.29"
 [dependencies.digest]
 features = ["std"]
 version = "0.7"
+
+[dependencies.sled]
+features = ["zstd"]
+version = "0.14"
