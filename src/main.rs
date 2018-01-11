@@ -8,7 +8,6 @@ extern crate failure;
 extern crate log;
 extern crate loggerv;
 extern crate num_cpus;
-extern crate pathdiff;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -21,7 +20,6 @@ extern crate walkdir;
 mod repository;
 mod repofile;
 mod pathclassifier;
-mod chunker;
 
 use failure::{
     Context,

@@ -2,7 +2,6 @@ use bincode::{
     serialize,
     Infinite,
 };
-use chunker::Chunker;
 use crossbeam_channel::unbounded;
 use failure::{
     Error,
@@ -11,7 +10,6 @@ use failure::{
 use num_cpus;
 use pathclassifier;
 use pathclassifier::PathType;
-use pathdiff::diff_paths;
 use repofile::RepoFile;
 use serde_json::{
     from_reader,
@@ -21,10 +19,8 @@ use sled;
 use std::fmt::Debug;
 use std::fs::{
     create_dir_all,
-    rename,
     File,
 };
-use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{
@@ -167,8 +163,8 @@ impl Repository {
         for worker in 0..worker {
             let rx = rx.clone();
             let repo_path = repo_path.clone();
-            let mindex = mindex.clone();
-            let barrier = barrier.clone();
+            let mindex = Arc::clone(&mindex);
+            let barrier = Arc::clone(&barrier);
 
             thread::spawn(move || {
                 let repo = Repository::open(&repo_path).expect("can not open worker repository");
@@ -218,7 +214,7 @@ impl Repository {
             bail!("can not add file that is inside the data dir")
         }
 
-        debug!("adding file {:?}", file_path);
+        debug!("add_file: adding file {:?}", file_path);
 
         let start = PreciseTime::now();
 
@@ -232,11 +228,15 @@ impl Repository {
             file_path.as_ref().to_path_buf()
         };
 
+        trace!("add_file: path - {:?}", path);
+
+        debug!("add_file: checking if path is already tracked");
         if self.contains(index, &path) {
             warn!("file {:?} is already tracked by the repo", file_path);
             return Ok(());
         }
 
+        debug!("add_file: creating repo_file from file_path");
         let file = RepoFile::from_path(&file_path).context(format_err!(
             "can not
         create file from path {:?}",
@@ -245,7 +245,7 @@ impl Repository {
 
         let checking = PreciseTime::now();
 
-        self.move_file_to_object_store(&path, &file)?;
+        // self.move_file_to_object_store(&path, &file)?;
         let moving = PreciseTime::now();
 
         self.set(index, path, &file)?;
@@ -363,34 +363,37 @@ impl Repository {
     // Ok(())
     // }
 
-    fn populate_file<P: AsRef<Path> + Debug>(&self, path: P, file: &RepoFile) -> Result<(), Error> {
-        let objects_path = self.objects_path_from_file(file)?;
+    // fn populate_file<P: AsRef<Path> + Debug>(&self, path: P, file: &RepoFile) ->
+    // Result<(), Error> { let objects_path =
+    // self.objects_path_from_file(file)?;
 
-        debug!(
-            "repository::Repository::populate_file: path - {:?}, objects_path - {:?}",
-            path, objects_path
-        );
+    //    debug!(
+    // "repository::Repository::populate_file: path - {:?}, objects_path -
+    // {:?}",        path, objects_path
+    //    );
 
-        let relative_path =
-            diff_paths(&objects_path, path.as_ref()).ok_or_else(|| format_err!("can not get relative path for file path {:?}", path))?;
+    //    let relative_path =
+    // diff_paths(&objects_path, path.as_ref()).ok_or_else(||
+    // format_err!("can not get relative path for file path {:?}", path))?;
 
-        debug!(
-            "repository::Repository::populate_file: relative_path - {:?}",
-            relative_path
-        );
+    //    debug!(
+    //        "repository::Repository::populate_file: relative_path - {:?}",
+    //        relative_path
+    //    );
 
-        let relative_path = relative_path
-            .strip_prefix("..")
-            .context("can not strip unneded \"..\" prefix. this should never happen")?;
+    //    let relative_path = relative_path
+    //        .strip_prefix("..")
+    // .context("can not strip unneded \"..\" prefix. this should never
+    // happen")?;
 
-        symlink(&relative_path, &path).context(format_err!(
-            "can not create symlink {:?} -> {:?}",
-            path,
-            relative_path,
-        ))?;
+    //    symlink(&relative_path, &path).context(format_err!(
+    //        "can not create symlink {:?} -> {:?}",
+    //        path,
+    //        relative_path,
+    //    ))?;
 
-        Ok(())
-    }
+    //    Ok(())
+    // }
 
     fn write_settings(&self) -> Result<(), Error> {
         let settings_path = self.get_settings_path();
@@ -413,60 +416,6 @@ impl Repository {
         Ok(())
     }
 
-    fn move_file_to_object_store<P: AsRef<Path> + Debug>(&self, path: P, file: &RepoFile) -> Result<(), Error> {
-        if file.is_dir || file.is_symlink {
-            return Ok(());
-        }
-
-        let objects_path = self.objects_path_from_file(file)?;
-
-        debug!(
-            "repository::Repository::move_file_to_object_store: path - {:?}, file - {:?}, objects_path - {:?}",
-            path, file, objects_path
-        );
-
-        let fullpath = self.get_full_path(&path);
-        let parent = objects_path
-            .parent()
-            .ok_or_else(|| format_err!("can not get parent for path {:?}", path))?;
-
-        create_dir_all(parent)?;
-        rename(&fullpath, &objects_path).context(format_err!(
-            "can not move file from {:?} to {:?}",
-            path,
-            objects_path
-        ))?;
-
-        self.populate_file(fullpath, file)?;
-
-        Ok(())
-    }
-
-    fn objects_path_from_file(&self, file: &RepoFile) -> Result<PathBuf, Error> {
-        if file.is_dir || file.is_symlink {
-            bail!("can not create object path for directories or symlinks")
-        }
-
-        let mut objects_path = self.get_objects_path();
-
-        let hash = file.hash.clone().ok_or_else(|| {
-            format_err!(
-                "file {:?} does not have a a hash. this should never happen",
-                file
-            )
-        })?;
-
-        let mut chunker = Chunker::new(hash.as_str(), 2);
-
-        for _sublayer in { 0..self.settings.sublayers } {
-            objects_path = objects_path.join(chunker
-                .next()
-                .ok_or_else(|| format_err!("chunker for file {:?} has no avaible chunks", file))?);
-        }
-
-        Ok(objects_path.join(hash))
-    }
-
     fn get_data_path(&self) -> PathBuf {
         self.path.clone().join(".syncust")
     }
@@ -475,31 +424,32 @@ impl Repository {
         self.get_data_path().join("index.sled")
     }
 
-    fn get_objects_path(&self) -> PathBuf {
-        self.get_data_path().join("objects")
-    }
-
     fn get_settings_path(&self) -> PathBuf {
         self.get_data_path().join("settings.json")
     }
 
-    fn get_full_path<P: AsRef<Path> + Debug>(&self, path: P) -> PathBuf {
-        self.path.join(path)
-    }
+    // fn get_full_path<P: AsRef<Path> + Debug>(&self, path: P) -> PathBuf {
+    //    self.path.join(path)
+    // }
 
     fn is_inialized(&self) -> bool {
         self.get_data_path().exists()
     }
 
     fn contains<P: AsRef<Path> + Debug>(&self, index: &Arc<Mutex<Index>>, path: P) -> bool {
-        let key = path.as_ref()
-            .to_str()
-            .expect("can not convert path to string for getting from the index")
-            .as_bytes();
-
-        match index.lock().unwrap().get(key) {
-            Some(_) => true,
-            None => false,
+        match serialize(&path.as_ref(), Infinite) {
+            Ok(key) => match index
+                .lock()
+                .expect("can not aquire lock on index")
+                .get(&key)
+            {
+                Some(_) => true,
+                None => false,
+            },
+            Err(err) => {
+                warn!("can not serialize key to bytes: {}", err);
+                false
+            }
         }
     }
 
@@ -520,18 +470,13 @@ impl Repository {
     // }
 
     fn set<P: AsRef<Path> + Debug>(&self, index: &Arc<Mutex<Index>>, path: P, file: &RepoFile) -> Result<(), Error> {
-        let key = path.as_ref()
-            .to_str()
-            .expect("can not convert path to string for getting from the index")
-            .as_bytes()
-            .to_vec();
-
-        // TODO: Figure out how to serialize a struct into bytes. Maybe we can just go
-        // struct -> json string -> bytes for now maybe there is a more
-        // efficient serialized for serde.
+        let key: Vec<u8> = serialize(&path.as_ref(), Infinite).context("can not serialize key to bytes")?;
         let data: Vec<u8> = serialize(&file, Infinite).context("can not serialize data to bytes")?;
 
-        index.lock().unwrap().set(key, data);
+        index
+            .lock()
+            .expect("can not aquire lock on index")
+            .set(key, data);
 
         Ok(())
     }
