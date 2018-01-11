@@ -25,6 +25,7 @@ use std::fs::{
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
+use time::PreciseTime;
 use walkdir::WalkDir;
 
 type Index = sled::Tree;
@@ -93,10 +94,10 @@ impl Repository {
                     .expect("can not convert index path to string for use in the database")
                     .into(),
             )
-            // 1GB of buffer
+            // 1GB of cache
             .cache_capacity(1e9 as usize)
             .use_compression(true)
-            .flush_every_ms(Some(1000))
+            .flush_every_ms(Some(100))
             .snapshot_after_ops(100_000)
             .tree()
     }
@@ -142,6 +143,8 @@ impl Repository {
             self.add_folder(&index, path);
         }
 
+        debug!("finished adding files");
+
         Ok(())
     }
 
@@ -152,22 +155,33 @@ impl Repository {
         // TODO: Make this more efficient so it wont blow up ram when there are a lot
         // of files maybe make a channel queue or something. Maybe use
         // https://github.com/crossbeam-rs/crossbeam-channel and https://doc.rust-lang.org/std/sync/struct.Barrier.html
-        let _no_out: Vec<_> = WalkDir::new(folder_path)
-            .into_iter()
-            .map(|entry| entry.unwrap())
-            .map(|entry| entry.path().to_path_buf())
-            .filter(|path| path != &repo_path)
-            .filter(|path| !path.starts_with(&data_path))
-            .map(|path| self.add_file(index, path))
-            .filter(|result| result.is_err())
-            .map(|error| error!("{:?}", error))
-            .collect();
+        for entry in WalkDir::new(folder_path) {
+            let path = entry.unwrap().path().to_path_buf();
+
+            debug!("checking path {:?}", path);
+
+            if path == repo_path {
+                continue;
+            }
+
+            if path.starts_with(&data_path) {
+                continue;
+            }
+
+            if let Err(err) = self.add_file(index, path) {
+                error!("{:?}", err)
+            }
+        }
     }
 
     fn add_file<P: AsRef<Path> + Debug>(&self, index: &Index, file_path: P) -> Result<(), Error> {
         if file_path.as_ref().starts_with(self.get_data_path()) {
             bail!("can not add file that is inside the data dir")
         }
+
+        debug!("adding file {:?}", file_path);
+
+        let start = PreciseTime::now();
 
         let path = if file_path.as_ref().starts_with(&self.path) {
             file_path
@@ -190,9 +204,21 @@ impl Repository {
             file_path
         ))?;
 
+        let checking = PreciseTime::now();
+
         self.move_file_to_object_store(&path, &file)?;
+        let moving = PreciseTime::now();
+
         self.set(index, path, &file)?;
-        self.write_settings().context("can not write repo data")?;
+        let index = PreciseTime::now();
+
+        debug!(
+            "added file {:?}: checking - {:?}, moving - {:?}, index - {:?}",
+            file_path,
+            start.to(checking),
+            checking.to(moving),
+            moving.to(index)
+        );
 
         Ok(())
     }

@@ -13,6 +13,7 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate sha2;
 extern crate sled;
+extern crate time;
 extern crate walkdir;
 
 mod repository;
