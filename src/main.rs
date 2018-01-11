@@ -7,6 +7,7 @@ extern crate failure;
 #[macro_use]
 extern crate log;
 extern crate loggerv;
+extern crate num_cpus;
 extern crate pathdiff;
 extern crate serde;
 #[macro_use]

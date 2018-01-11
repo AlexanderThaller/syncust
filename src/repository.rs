@@ -8,6 +8,7 @@ use failure::{
     Error,
     ResultExt,
 };
+use num_cpus;
 use pathclassifier;
 use pathclassifier::PathType;
 use pathdiff::diff_paths;
@@ -158,7 +159,7 @@ impl Repository {
         let data_path = self.get_data_path();
         let (tx, rx) = unbounded();
 
-        let worker = 10;
+        let worker = num_cpus::get() - 1;
         let index = self.open_index();
         let mindex = Arc::new(Mutex::new(index));
         let barrier = Arc::new(Barrier::new(worker + 1));
