@@ -3,6 +3,7 @@ use bincode::{
     Infinite,
 };
 use chunker::Chunker;
+use crossbeam_channel::unbounded;
 use failure::{
     Error,
     ResultExt,
@@ -25,6 +26,12 @@ use std::fs::{
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::{
+    Arc,
+    Barrier,
+    Mutex,
+};
+use std::thread;
 use time::PreciseTime;
 use walkdir::WalkDir;
 
@@ -135,12 +142,10 @@ impl Repository {
             Err(RepositoryError::NotInitialized)?
         }
 
-        let index = self.open_index();
-
         for path in paths_to_add {
             trace!("repository::Repository::add: path - {:?}", path);
 
-            self.add_folder(&index, path);
+            self.add_folder(path);
         }
 
         debug!("finished adding files");
@@ -148,17 +153,46 @@ impl Repository {
         Ok(())
     }
 
-    fn add_folder<P: AsRef<Path> + Debug>(&mut self, index: &Index, folder_path: P) {
+    fn add_folder<P: AsRef<Path> + Debug>(&self, folder_path: P) {
         let repo_path = self.path.clone();
         let data_path = self.get_data_path();
+        let (tx, rx) = unbounded();
 
-        // TODO: Make this more efficient so it wont blow up ram when there are a lot
-        // of files maybe make a channel queue or something. Maybe use
-        // https://github.com/crossbeam-rs/crossbeam-channel and https://doc.rust-lang.org/std/sync/struct.Barrier.html
+        let worker = 10;
+        let index = self.open_index();
+        let mindex = Arc::new(Mutex::new(index));
+        let barrier = Arc::new(Barrier::new(worker + 1));
+
+        for worker in 0..worker {
+            let rx = rx.clone();
+            let repo_path = repo_path.clone();
+            let mindex = mindex.clone();
+            let barrier = barrier.clone();
+
+            thread::spawn(move || {
+                let repo = Repository::open(&repo_path).expect("can not open worker repository");
+
+                loop {
+                    let entry = rx.recv();
+                    debug!("worker {} received message", worker);
+
+                    if entry.is_err() {
+                        debug!("worker {} has ended", worker);
+                        break;
+                    }
+
+                    if let Err(err) = repo.add_file(&mindex, entry.unwrap()) {
+                        error!("{:?}", err)
+                    }
+                }
+
+                debug!("worker thread {} is waiting", worker);
+                barrier.wait();
+            });
+        }
+
         for entry in WalkDir::new(folder_path) {
             let path = entry.unwrap().path().to_path_buf();
-
-            debug!("checking path {:?}", path);
 
             if path == repo_path {
                 continue;
@@ -168,13 +202,17 @@ impl Repository {
                 continue;
             }
 
-            if let Err(err) = self.add_file(index, path) {
-                error!("{:?}", err)
-            }
+            tx.send(path).expect("can not send path");
         }
+
+        debug!("dropping tx channel");
+        drop(tx);
+
+        debug!("main thread is waiting");
+        barrier.wait();
     }
 
-    fn add_file<P: AsRef<Path> + Debug>(&self, index: &Index, file_path: P) -> Result<(), Error> {
+    fn add_file<P: AsRef<Path> + Debug>(&self, index: &Arc<Mutex<Index>>, file_path: P) -> Result<(), Error> {
         if file_path.as_ref().starts_with(self.get_data_path()) {
             bail!("can not add file that is inside the data dir")
         }
@@ -452,13 +490,13 @@ impl Repository {
         self.get_data_path().exists()
     }
 
-    fn contains<P: AsRef<Path> + Debug>(&self, index: &Index, path: P) -> bool {
+    fn contains<P: AsRef<Path> + Debug>(&self, index: &Arc<Mutex<Index>>, path: P) -> bool {
         let key = path.as_ref()
             .to_str()
             .expect("can not convert path to string for getting from the index")
             .as_bytes();
 
-        match index.get(key) {
+        match index.lock().unwrap().get(key) {
             Some(_) => true,
             None => false,
         }
@@ -480,7 +518,7 @@ impl Repository {
     // }
     // }
 
-    fn set<P: AsRef<Path> + Debug>(&self, index: &Index, path: P, file: &RepoFile) -> Result<(), Error> {
+    fn set<P: AsRef<Path> + Debug>(&self, index: &Arc<Mutex<Index>>, path: P, file: &RepoFile) -> Result<(), Error> {
         let key = path.as_ref()
             .to_str()
             .expect("can not convert path to string for getting from the index")
@@ -492,7 +530,7 @@ impl Repository {
         // efficient serialized for serde.
         let data: Vec<u8> = serialize(&file, Infinite).context("can not serialize data to bytes")?;
 
-        index.set(key, data);
+        index.lock().unwrap().set(key, data);
 
         Ok(())
     }

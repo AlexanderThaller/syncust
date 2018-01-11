@@ -1,6 +1,7 @@
 extern crate bincode;
 #[macro_use]
 extern crate clap;
+extern crate crossbeam_channel;
 #[macro_use]
 extern crate failure;
 #[macro_use]
