@@ -91,8 +91,6 @@ fn run_add(matches: &clap::ArgMatches) -> Result<(), Error> {
     repo.add(paths_to_add)
         .context("can not add files to repository")?;
 
-    trace!("main::run_add: repo - {:#?}", repo);
-
     Ok(())
 }
 
@@ -135,8 +133,6 @@ fn run_clone(matches: &clap::ArgMatches) -> Result<(), Error> {
     let mut repo = Repository::default().with_path(destination_path);
 
     repo.clone(source_path).context("can not clone repository")?;
-
-    trace!("main::run_init: repo - {:#?}", repo);
 
     Ok(())
 }

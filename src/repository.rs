@@ -169,14 +169,15 @@ impl Repository {
             bail!("can not add file that is inside the data dir")
         }
 
-        let path = file_path
-            .as_ref()
-            .strip_prefix(&self.path)
-            .expect(
-                "path of entry does not have repo as prefix. this should never
-        happen",
-            )
-            .to_path_buf();
+        let path = if file_path.as_ref().starts_with(&self.path) {
+            file_path
+                .as_ref()
+                .strip_prefix(&self.path)
+                .expect("can not strip repo path")
+                .to_path_buf()
+        } else {
+            file_path.as_ref().to_path_buf()
+        };
 
         if self.contains(index, &path) {
             warn!("file {:?} is already tracked by the repo", file_path);
@@ -333,7 +334,7 @@ impl Repository {
             settings_path
         ))?;
 
-        to_writer(settings_file, &self.settings).context("can not serialize repository settings to settings file")?;
+        to_writer(&settings_file, &self.settings).context("can not serialize repository settings to settings file")?;
 
         Ok(())
     }
