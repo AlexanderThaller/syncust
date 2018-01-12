@@ -6,20 +6,21 @@ extern crate crossbeam_channel;
 extern crate failure;
 #[macro_use]
 extern crate log;
-extern crate loggerv;
 extern crate num_cpus;
+extern crate rocksdb;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
 extern crate sha2;
-extern crate sled;
+extern crate simplelog;
 extern crate time;
 extern crate walkdir;
 
-mod repository;
-mod repofile;
+mod index;
 mod pathclassifier;
+mod repofile;
+mod repository;
 
 use failure::{
     Context,
@@ -27,6 +28,7 @@ use failure::{
     ResultExt,
 };
 use repository::Repository;
+use simplelog::*;
 use std::path::PathBuf;
 
 #[derive(Debug, Fail)]
@@ -55,7 +57,10 @@ fn run() -> Result<(), Error> {
         .author(crate_authors!())
         .get_matches();
 
-    loggerv::init_with_level(value_t!(matches, "log_level", log::LogLevel)?)?;
+    TermLogger::init(
+        value_t!(matches, "log_level", LogLevelFilter)?,
+        Config::default(),
+    )?;
     trace!("main::run: matches - {:#?}", matches);
 
     match matches.subcommand_name() {

@@ -1,12 +1,9 @@
-use bincode::{
-    serialize,
-    Infinite,
-};
 use crossbeam_channel::unbounded;
 use failure::{
     Error,
     ResultExt,
 };
+use index::Index;
 use num_cpus;
 use pathclassifier;
 use pathclassifier::PathType;
@@ -15,7 +12,6 @@ use serde_json::{
     from_reader,
     to_writer,
 };
-use sled;
 use std::fmt::Debug;
 use std::fs::{
     create_dir_all,
@@ -31,8 +27,6 @@ use std::sync::{
 use std::thread;
 use time::PreciseTime;
 use walkdir::WalkDir;
-
-type Index = sled::Tree;
 
 #[derive(Debug, Fail)]
 enum RepositoryError {
@@ -90,22 +84,6 @@ impl Repository {
         Ok(repository)
     }
 
-    fn open_index(&self) -> Index {
-        sled::Config::default()
-            .path(
-                self.get_index_path()
-                    .to_str()
-                    .expect("can not convert index path to string for use in the database")
-                    .into(),
-            )
-            // 1GB of cache
-            .cache_capacity(1e9 as usize)
-            .use_compression(true)
-            .flush_every_ms(Some(100))
-            .snapshot_after_ops(100_000)
-            .tree()
-    }
-
     pub fn init(&self) -> Result<(), Error> {
         if self.is_inialized() {
             Err(RepositoryError::AlreadyInitialized)?
@@ -114,7 +92,7 @@ impl Repository {
 
         self.write_settings().context("can not write repo data")?;
 
-        let _ = self.open_index();
+        let _ = Index::open(self.get_index_path())?;
 
         Ok(())
     }
@@ -142,7 +120,7 @@ impl Repository {
         for path in paths_to_add {
             trace!("repository::Repository::add: path - {:?}", path);
 
-            self.add_folder(path);
+            self.add_folder(path)?;
         }
 
         debug!("finished adding files");
@@ -150,13 +128,13 @@ impl Repository {
         Ok(())
     }
 
-    fn add_folder<P: AsRef<Path> + Debug>(&self, folder_path: P) {
+    fn add_folder<P: AsRef<Path> + Debug>(&self, folder_path: P) -> Result<(), Error> {
         let repo_path = self.path.clone();
         let data_path = self.get_data_path();
         let (tx, rx) = unbounded();
 
         let worker = num_cpus::get() - 1;
-        let index = self.open_index();
+        let index = Index::open(self.get_index_path())?;
         let mindex = Arc::new(Mutex::new(index));
         let barrier = Arc::new(Barrier::new(worker + 1));
 
@@ -207,6 +185,8 @@ impl Repository {
 
         debug!("main thread is waiting");
         barrier.wait();
+
+        Ok(())
     }
 
     fn add_file<P: AsRef<Path> + Debug>(&self, index: &Arc<Mutex<Index>>, file_path: P) -> Result<(), Error> {
@@ -231,7 +211,7 @@ impl Repository {
         trace!("add_file: path - {:?}", path);
 
         debug!("add_file: checking if path is already tracked");
-        if self.contains(index, &path) {
+        if index.lock().unwrap().contains(&path) {
             warn!("file {:?} is already tracked by the repo", file_path);
             return Ok(());
         }
@@ -245,155 +225,22 @@ impl Repository {
 
         let checking = PreciseTime::now();
 
-        // self.move_file_to_object_store(&path, &file)?;
-        let moving = PreciseTime::now();
-
-        self.set(index, path, &file)?;
+        index.lock().unwrap().set(path, &file)?;
         let index = PreciseTime::now();
 
         debug!(
-            "added file {:?}: checking - {:?}, moving - {:?}, index - {:?}",
+            "added file {:?}: checking - {:?}, index - {:?}",
             file_path,
             start.to(checking),
-            checking.to(moving),
-            moving.to(index)
+            checking.to(index),
         );
 
         Ok(())
     }
 
     fn clone_local<P: AsRef<Path> + Debug>(&mut self, _source_path: P) -> Result<(), Error> {
-        // Steps:
-        // . Copy source_paths data.json
-        // . Create remote based on data.json
-        // . Create symlinks based on that data.json
-
         unimplemented!()
-
-        // let source_repo = Repository::default().with_path(source_path);
-        //
-        // let destination_data_file = self.get_settings_path();
-        // let source_data_file = source_repo.get_settings_path();
-        //
-        // trace!(
-        // "repository::Repository::clone_local: destination_data_file - {:?},
-        // source_data_file - {:?}", destination_data_file,
-        // source_data_file
-        // );
-        //
-        // let source_data = File::open(source_data_file).context("can not open
-        // destination file")?; let repodata: Repository =
-        // from_reader(source_data).context("can not deserialize destination data from
-        // file")?;
-        //
-        // trace!(
-        // "repository::Repository::clone_local: repodata.files - {:#?}",
-        // repodata.files
-        // );
-        //
-        // self.populate_directories(&repodata.files)
-        // .context("can not populate files")?;
-        //
-        // self.populate_files(&repodata.files)
-        // .context("can not populate files")?;
-        //
-        // self.files = repodata.files;
-        //
-        // self.write_settings().context("can not write repodata")?;
-        //
-        // Ok(())
-        // 
     }
-
-    // fn populate_directories(&self, files: &Files) -> Result<(), Error> {
-    // let errors: Vec<_> = files
-    // .iter()
-    // .filter(|&(_, entry)| entry.is_dir)
-    // .map(|(directory, _)| {
-    // trace!(
-    // "repository::Repository::populate_directories: directory - {:?}",
-    // directory
-    // );
-    //
-    // create_dir_all(self.get_full_path(&directory)).context(format_err!("can not
-    // create directory {:?}", directory)) })
-    // .filter(|err| err.is_err())
-    // .map(|err| err.err().unwrap())
-    // .collect();
-    //
-    // trace!(
-    // "repository::Repository::populate_directories: errors - {:#?}",
-    // errors
-    // );
-    //
-    // for error in &errors {
-    // error!("{:?}", error)
-    // }
-    //
-    // if !errors.is_empty() {
-    // bail!("can not populate directories")
-    // }
-    //
-    // Ok(())
-    // }
-
-    // fn populate_files(&self, files: &Files) -> Result<(), Error> {
-    // let errors: Vec<_> = files
-    // .iter()
-    // .filter(|&(_, entry)| !entry.is_dir)
-    // .map(|(path, file)| self.populate_file(self.get_full_path(&path), file))
-    // .filter(|err| err.is_err())
-    // .map(|err| err.err().unwrap())
-    // .collect();
-    //
-    // trace!(
-    // "repository::Repository::populate_files: errors - {:#?}",
-    // errors
-    // );
-    //
-    // for error in &errors {
-    // let cause: Vec<_> = error.causes().map(|cause| format!("{}",
-    // cause)).collect(); error!("{}", cause.join(": "))
-    // }
-    //
-    // if !errors.is_empty() {
-    // bail!("can not populate files")
-    // }
-    //
-    // Ok(())
-    // }
-
-    // fn populate_file<P: AsRef<Path> + Debug>(&self, path: P, file: &RepoFile) ->
-    // Result<(), Error> { let objects_path =
-    // self.objects_path_from_file(file)?;
-
-    //    debug!(
-    // "repository::Repository::populate_file: path - {:?}, objects_path -
-    // {:?}",        path, objects_path
-    //    );
-
-    //    let relative_path =
-    // diff_paths(&objects_path, path.as_ref()).ok_or_else(||
-    // format_err!("can not get relative path for file path {:?}", path))?;
-
-    //    debug!(
-    //        "repository::Repository::populate_file: relative_path - {:?}",
-    //        relative_path
-    //    );
-
-    //    let relative_path = relative_path
-    //        .strip_prefix("..")
-    // .context("can not strip unneded \"..\" prefix. this should never
-    // happen")?;
-
-    //    symlink(&relative_path, &path).context(format_err!(
-    //        "can not create symlink {:?} -> {:?}",
-    //        path,
-    //        relative_path,
-    //    ))?;
-
-    //    Ok(())
-    // }
 
     fn write_settings(&self) -> Result<(), Error> {
         let settings_path = self.get_settings_path();
@@ -421,63 +268,14 @@ impl Repository {
     }
 
     fn get_index_path(&self) -> PathBuf {
-        self.get_data_path().join("index.sled")
+        self.get_data_path().join("index.rocksdb")
     }
 
     fn get_settings_path(&self) -> PathBuf {
         self.get_data_path().join("settings.json")
     }
 
-    // fn get_full_path<P: AsRef<Path> + Debug>(&self, path: P) -> PathBuf {
-    //    self.path.join(path)
-    // }
-
     fn is_inialized(&self) -> bool {
         self.get_data_path().exists()
-    }
-
-    fn contains<P: AsRef<Path> + Debug>(&self, index: &Arc<Mutex<Index>>, path: P) -> bool {
-        match serialize(&path.as_ref(), Infinite) {
-            Ok(key) => match index
-                .lock()
-                .expect("can not aquire lock on index")
-                .get(&key)
-            {
-                Some(_) => true,
-                None => false,
-            },
-            Err(err) => {
-                warn!("can not serialize key to bytes: {}", err);
-                false
-            }
-        }
-    }
-
-    // fn get<P: AsRef<Path> + Debug>(&self, index: &Index, path: P) ->
-    // Result<Option<RepoFile>, Error> {
-    // let key = path.as_ref()
-    // .to_str()
-    // .expect("can not convert path to string for getting from the index")
-    // .as_bytes();
-    //
-    // match index.get(key) {
-    // Some(data) => {
-    // let file: RepoFile = deserialize(&data).context("can not deserialize data
-    // from bytes")?; Ok(Some(file))
-    // }
-    // None => Ok(None),
-    // }
-    // }
-
-    fn set<P: AsRef<Path> + Debug>(&self, index: &Arc<Mutex<Index>>, path: P, file: &RepoFile) -> Result<(), Error> {
-        let key: Vec<u8> = serialize(&path.as_ref(), Infinite).context("can not serialize key to bytes")?;
-        let data: Vec<u8> = serialize(&file, Infinite).context("can not serialize data to bytes")?;
-
-        index
-            .lock()
-            .expect("can not aquire lock on index")
-            .set(key, data);
-
-        Ok(())
     }
 }
