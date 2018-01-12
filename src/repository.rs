@@ -130,10 +130,34 @@ impl Repository {
     }
 
     pub fn status(&self) -> Result<RepoStatus, Error> {
+        if !self.is_inialized() {
+            Err(RepositoryError::NotInitialized)?
+        }
+
         let index = Index::open(self.get_index_path())?;
 
         let mut status = RepoStatus::default();
         status.paths_count = index.count();
+
+        let repo_path = self.path.clone();
+        let data_path = self.get_data_path();
+
+        for entry in WalkDir::new(&repo_path) {
+            let path = entry.unwrap().path().to_path_buf();
+
+            if path == repo_path {
+                continue;
+            }
+
+            if path.starts_with(&data_path) {
+                continue;
+            }
+
+            let path = self.strip_path(&path);
+            if !index.contains(&path) {
+                status.untracked_paths.insert(path);
+            }
+        }
 
         Ok(status)
     }
@@ -199,6 +223,17 @@ impl Repository {
         Ok(())
     }
 
+    fn strip_path<P: AsRef<Path> + Debug>(&self, path: P) -> PathBuf {
+        if path.as_ref().starts_with(&self.path) {
+            path.as_ref()
+                .strip_prefix(&self.path)
+                .expect("can not strip repo path")
+                .to_path_buf()
+        } else {
+            path.as_ref().to_path_buf()
+        }
+    }
+
     fn add_file<P: AsRef<Path> + Debug>(&self, index: &Arc<Mutex<Index>>, file_path: P) -> Result<(), Error> {
         if file_path.as_ref().starts_with(self.get_data_path()) {
             bail!("can not add file that is inside the data dir")
@@ -208,15 +243,7 @@ impl Repository {
 
         let start = PreciseTime::now();
 
-        let path = if file_path.as_ref().starts_with(&self.path) {
-            file_path
-                .as_ref()
-                .strip_prefix(&self.path)
-                .expect("can not strip repo path")
-                .to_path_buf()
-        } else {
-            file_path.as_ref().to_path_buf()
-        };
+        let path = self.strip_path(&file_path);
 
         trace!("add_file: path - {:?}", path);
 

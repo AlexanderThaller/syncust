@@ -177,8 +177,6 @@ fn run_status(matches: &clap::ArgMatches) -> Result<(), Error> {
         .ok_or(CliError::CanNotGetRepoPathFromMatches)?
         .into();
 
-    info!("Initializing repository in {}", repo_path.display());
-
     let repo = Repository::default().with_path(repo_path);
     let status = repo.status().context("can not get status from repo")?;
 
