@@ -13,9 +13,14 @@ use serde_json::{
     from_reader,
     to_writer,
 };
+use sha2::{
+    Digest,
+    Sha256,
+};
 use std::fmt::Debug;
 use std::fs::{
     create_dir_all,
+    symlink_metadata,
     File,
 };
 use std::path::Path;
@@ -143,19 +148,43 @@ impl Repository {
         let data_path = self.get_data_path();
 
         for entry in WalkDir::new(&repo_path) {
-            let path = entry.unwrap().path().to_path_buf();
+            let file_path = entry.unwrap().path().to_path_buf();
 
-            if path == repo_path {
+            if file_path == repo_path {
                 continue;
             }
 
-            if path.starts_with(&data_path) {
+            if file_path.starts_with(&data_path) {
                 continue;
             }
 
-            let path = self.strip_path(&path);
-            if !index.contains(&path) {
+            let path = self.strip_path(&file_path);
+            let index_entry = index.get(&path);
+
+            if index_entry.is_err() {
                 status.untracked_paths.insert(path);
+            } else {
+                let metadata = symlink_metadata(&file_path).context(format_err!("can not get metadata for file {:?}", path))?;
+
+                let modified = metadata
+                    .modified()
+                    .context(format_err!("can not get modified time for file {:?}", path))?;
+
+                let index_entry = index_entry.unwrap();
+                if modified != index_entry.modified {
+                    let is_dir = metadata.is_dir();
+
+                    let hash = if is_dir {
+                        None
+                    } else {
+                        let mut file = File::open(&file_path).context(format_err!("can not open path {:?}", path))?;
+                        Some(format!("{:x}", Sha256::digest_reader(&mut file)?))
+                    };
+
+                    if index_entry.hash != hash {
+                        status.changed_paths.insert(path);
+                    }
+                }
             }
         }
 

@@ -1,4 +1,5 @@
 use bincode::{
+    deserialize,
     serialize,
     Infinite,
 };
@@ -31,6 +32,18 @@ impl Index {
         self.db.put(&key, &data)?;
 
         Ok(())
+    }
+
+    pub fn get<P: AsRef<Path> + Debug>(&self, path: P) -> Result<RepoFile, Error> {
+        let key: Vec<u8> = serialize(&path.as_ref(), Infinite).context("can not serialize key to bytes")?;
+
+        match self.db.get(&key)? {
+            Some(data) => {
+                let decoded: RepoFile = deserialize(&data)?;
+                Ok(decoded)
+            }
+            None => bail!("key not found in index"),
+        }
     }
 
     pub fn contains<P: AsRef<Path> + Debug>(&self, path: P) -> bool {
