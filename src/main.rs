@@ -21,6 +21,7 @@ mod index;
 mod pathclassifier;
 mod repofile;
 mod repository;
+mod repostatus;
 
 use failure::{
     Context,
@@ -71,6 +72,7 @@ fn run() -> Result<(), Error> {
         Some("get") => run_get(matches.subcommand_matches("get").unwrap())?,
         Some("init") => run_init(matches.subcommand_matches("init").unwrap())?,
         Some("remote") => run_remote(matches.subcommand_matches("remote").unwrap())?,
+        Some("status") => run_status(matches.subcommand_matches("status").unwrap())?,
         Some("sync") => run_sync(matches.subcommand_matches("sync").unwrap())?,
         Some("type") => run_type(matches.subcommand_matches("type").unwrap())?,
         Some("watch") => run_watch(matches.subcommand_matches("watch").unwrap())?,
@@ -162,13 +164,27 @@ fn run_init(matches: &clap::ArgMatches) -> Result<(), Error> {
     let repo = Repository::default().with_path(repo_path);
     repo.init().context("can not initialize repository")?;
 
-    trace!("main::run_init: repo - {:#?}", repo);
-
     Ok(())
 }
 
 fn run_remote(_matches: &clap::ArgMatches) -> Result<(), Error> {
     unimplemented!()
+}
+
+fn run_status(matches: &clap::ArgMatches) -> Result<(), Error> {
+    let repo_path: PathBuf = matches
+        .value_of("repo_path")
+        .ok_or(CliError::CanNotGetRepoPathFromMatches)?
+        .into();
+
+    info!("Initializing repository in {}", repo_path.display());
+
+    let repo = Repository::default().with_path(repo_path);
+    let status = repo.status().context("can not get status from repo")?;
+
+    println!("{}", status);
+
+    Ok(())
 }
 
 fn run_sync(_matches: &clap::ArgMatches) -> Result<(), Error> {

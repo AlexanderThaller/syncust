@@ -7,7 +7,10 @@ use failure::{
     ResultExt,
 };
 use repofile::RepoFile;
-use rocksdb::DB;
+use rocksdb::{
+    IteratorMode,
+    DB,
+};
 use std::fmt::Debug;
 use std::path::Path;
 
@@ -49,5 +52,10 @@ impl Index {
                 false
             }
         }
+    }
+
+    pub fn count(&self) -> usize {
+        let iter = self.db.iterator(IteratorMode::Start);
+        iter.count()
     }
 }

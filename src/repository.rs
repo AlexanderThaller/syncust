@@ -8,6 +8,7 @@ use num_cpus;
 use pathclassifier;
 use pathclassifier::PathType;
 use repofile::RepoFile;
+use repostatus::RepoStatus;
 use serde_json::{
     from_reader,
     to_writer,
@@ -126,6 +127,15 @@ impl Repository {
         debug!("finished adding files");
 
         Ok(())
+    }
+
+    pub fn status(&self) -> Result<RepoStatus, Error> {
+        let index = Index::open(self.get_index_path())?;
+
+        let mut status = RepoStatus::default();
+        status.paths_count = index.count();
+
+        Ok(status)
     }
 
     fn add_folder<P: AsRef<Path> + Debug>(&self, folder_path: P) -> Result<(), Error> {

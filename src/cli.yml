@@ -88,3 +88,15 @@ subcommands:
 
   - add_remote:
       about: 'Add an additional remote that should be kept in sync'
+
+  - status:
+      about: 'Show current status of the repository'
+      args:
+        - repo_path:
+            default_value: '.'
+            global: true
+            help: 'Path to the repository that should be managed'
+            long: 'repo_path'
+            short: 'R'
+            takes_value: true
+            value_name: 'path'
