@@ -36,3 +36,7 @@ version = "2.29"
 [dependencies.digest]
 features = ["std"]
 version = "0.7"
+
+[dependencies.uuid]
+features = ["v4"]
+version = "0.5"

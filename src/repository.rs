@@ -115,7 +115,7 @@ impl Repository {
             PathType::Local => self.clone_local(source_path)?,
         }
 
-        Ok(())
+        unimplemented!();
     }
 
     pub fn add<P: AsRef<Path> + Debug>(&mut self, paths_to_add: Vec<P>) -> Result<(), Error> {
@@ -142,7 +142,6 @@ impl Repository {
         let index = Index::open(self.get_index_path())?;
 
         let mut status = RepoStatus::default();
-        status.paths_count = index.count();
 
         let repo_path = self.path.clone();
         let data_path = self.get_data_path();
@@ -188,6 +187,8 @@ impl Repository {
             }
         }
 
+        status.paths_count = index.count();
+
         Ok(status)
     }
 
@@ -196,15 +197,15 @@ impl Repository {
         let data_path = self.get_data_path();
         let (tx, rx) = unbounded();
 
-        let worker = num_cpus::get() - 1;
+        let worker = num_cpus::get();
         let index = Index::open(self.get_index_path())?;
-        let mindex = Arc::new(Mutex::new(index));
+        let index = Arc::new(Mutex::new(index));
         let barrier = Arc::new(Barrier::new(worker + 1));
 
         for worker in 0..worker {
             let rx = rx.clone();
             let repo_path = repo_path.clone();
-            let mindex = Arc::clone(&mindex);
+            let index = Arc::clone(&index);
             let barrier = Arc::clone(&barrier);
 
             thread::spawn(move || {
@@ -219,7 +220,7 @@ impl Repository {
                         break;
                     }
 
-                    if let Err(err) = repo.add_file(&mindex, entry.unwrap()) {
+                    if let Err(err) = repo.add_file(&index, entry.unwrap()) {
                         error!("{:?}", err)
                     }
                 }
@@ -304,8 +305,26 @@ impl Repository {
         Ok(())
     }
 
-    fn clone_local<P: AsRef<Path> + Debug>(&mut self, _source_path: P) -> Result<(), Error> {
-        unimplemented!()
+    fn clone_local<P: AsRef<Path> + Debug>(&self, source_path: P) -> Result<(), Error> {
+        if !self.is_inialized() {
+            Err(RepositoryError::NotInitialized)?
+        }
+
+        let src_repo = Repository::open(source_path).context("can not open source repository")?;
+
+        if !src_repo.is_inialized() {
+            bail!("source repository is not initialized")
+        }
+
+        let src_index = Index::open(src_repo.get_index_path()).context("can not open source repository index")?;
+
+        let index = Index::open(self.get_index_path()).context("can not open repository index")?;
+
+        for (path, metadata) in src_index.entries()? {
+            index.set(path, &metadata)?;
+        }
+
+        Ok(())
     }
 
     fn write_settings(&self) -> Result<(), Error> {
@@ -343,5 +362,17 @@ impl Repository {
 
     fn is_inialized(&self) -> bool {
         self.get_data_path().exists()
+    }
+
+    pub fn debug_tracked_files(&self) -> Result<(), Error> {
+        if !self.is_inialized() {
+            Err(RepositoryError::NotInitialized)?
+        }
+
+        let index = Index::open(self.get_index_path())?;
+
+        index.debug_tracked_files()?;
+
+        Ok(())
     }
 }

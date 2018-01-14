@@ -15,6 +15,7 @@ extern crate serde_json;
 extern crate sha2;
 extern crate simplelog;
 extern crate time;
+extern crate uuid;
 extern crate walkdir;
 
 mod index;
@@ -68,6 +69,7 @@ fn run() -> Result<(), Error> {
         Some("add_remote") => run_add_remote(matches.subcommand_matches("add_remote").unwrap())?,
         Some("add") => run_add(matches.subcommand_matches("add").unwrap())?,
         Some("clone") => run_clone(matches.subcommand_matches("clone").unwrap())?,
+        Some("debug") => run_debug(matches.subcommand_matches("debug").unwrap())?,
         Some("drop") => run_drop(matches.subcommand_matches("drop").unwrap())?,
         Some("get") => run_get(matches.subcommand_matches("get").unwrap())?,
         Some("init") => run_init(matches.subcommand_matches("init").unwrap())?,
@@ -141,6 +143,25 @@ fn run_clone(matches: &clap::ArgMatches) -> Result<(), Error> {
     let mut repo = Repository::default().with_path(destination_path);
 
     repo.clone(source_path).context("can not clone repository")?;
+
+    Ok(())
+}
+
+fn run_debug(matches: &clap::ArgMatches) -> Result<(), Error> {
+    let subcommand = matches.subcommand_name().unwrap();
+    let matches = matches.subcommand_matches(subcommand).unwrap();
+
+    let repo_path: PathBuf = matches
+        .value_of("repo_path")
+        .ok_or(CliError::CanNotGetRepoPathFromMatches)?
+        .into();
+
+    let repo = Repository::open(repo_path).context("can not open repository")?;
+
+    match subcommand {
+        "tracked_files" => repo.debug_tracked_files()?,
+        _ => unreachable!(),
+    }
 
     Ok(())
 }

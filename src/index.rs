@@ -12,8 +12,10 @@ use rocksdb::{
     IteratorMode,
     DB,
 };
+use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::path::Path;
+use std::path::PathBuf;
 
 pub struct Index {
     db: DB,
@@ -26,7 +28,7 @@ impl Index {
     }
 
     pub fn set<P: AsRef<Path> + Debug>(&self, path: P, file: &RepoFile) -> Result<(), Error> {
-        let key: Vec<u8> = serialize(&path.as_ref(), Infinite).context("can not serialize key to bytes")?;
+        let key: Vec<u8> = serialize(&path.as_ref(), Infinite).context(format_err!("can not serialize path {:?} to bytes", path))?;
         let data: Vec<u8> = serialize(&file, Infinite).context("can not serialize data to bytes")?;
 
         self.db.put(&key, &data)?;
@@ -70,5 +72,32 @@ impl Index {
     pub fn count(&self) -> usize {
         let iter = self.db.iterator(IteratorMode::Start);
         iter.count()
+    }
+
+    pub fn debug_tracked_files(&self) -> Result<(), Error> {
+        let iter = self.db.iterator(IteratorMode::Start);
+
+        for (key, data) in iter {
+            let decoded_key: PathBuf = deserialize(&key)?;
+            let decoded_data: RepoFile = deserialize(&data)?;
+
+            println!("key: {:?}\nvalue: {:#?}", decoded_key, decoded_data);
+        }
+
+        Ok(())
+    }
+
+    pub fn entries(&self) -> Result<BTreeMap<PathBuf, RepoFile>, Error> {
+        let iter = self.db.iterator(IteratorMode::Start);
+
+        let mut out = BTreeMap::default();
+        for (path, metadata) in iter {
+            let decoded_path: PathBuf = deserialize(&path)?;
+            let decoded_metadata: RepoFile = deserialize(&metadata)?;
+
+            out.insert(decoded_path, decoded_metadata);
+        }
+
+        Ok(out)
     }
 }

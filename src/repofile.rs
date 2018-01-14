@@ -14,6 +14,7 @@ use std::fs::{
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::SystemTime;
+use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RepoFile {
@@ -23,6 +24,8 @@ pub struct RepoFile {
     pub len: u64,
     pub modified: SystemTime,
     pub permissions: u32,
+    // TODO: Switch back to raw type and dont convert to string when we can serialize directly
+    pub uuid: String,
 }
 
 impl RepoFile {
@@ -55,6 +58,7 @@ impl RepoFile {
                 .modified()
                 .context(format_err!("can not get modified time for file {:?}", path))?,
             permissions: metadata.permissions().mode(),
+            uuid: format!("{}", Uuid::new_v4()),
         })
     }
 }
